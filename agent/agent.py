@@ -42,33 +42,10 @@ def safe_json_parse(text):
 
 
 def parse_intent_response(text, valid_api_ids):
-    """Parse Phase 1 JSON; tolerate messy output from small models (registry-driven)."""
-    data = safe_json_parse(text)
-    if data:
-        api_id = data.get("api_id")
-        if api_id in valid_api_ids or api_id is None:
-            return data
+    """Parse Phase 1 JSON; tolerate messy SLM output (see api_router.normalize_intent_payload)."""
+    from api_router import normalize_intent_payload
 
-    if not text:
-        return None
-
-    m = re.search(r'"api_id"\s*:\s*"([^"]+)"', text)
-    if m and m.group(1) in valid_api_ids:
-        return {
-            "api_id": m.group(1),
-            "confidence": "medium",
-            "reason": "parsed api_id from model output",
-        }
-
-    # Any registry api id appearing in the model text (no hardcoded phrases).
-    for api_id in sorted(valid_api_ids, key=len, reverse=True):
-        if api_id in text:
-            return {
-                "api_id": api_id,
-                "confidence": "medium",
-                "reason": "model output referenced registry api id",
-            }
-    return None
+    return normalize_intent_payload(text, valid_api_ids)
 
 
 def coerce_date_from_text(text):
@@ -228,7 +205,15 @@ def build_conversion_examples(api):
 #  PHASE 1 — Intent Detection
 # ═══════════════════════════════════════════════════════════════
 
-def phase1_detect_intent(user_input, api_catalog, history, valid_api_ids):
+def phase1_detect_intent(user_input, api_catalog, history, valid_api_ids, apis=None):
+    from api_router import match_api_heuristic
+
+    # Layer 1 — registry keyword router (no LLM; reliable for obvious phrasing).
+    if apis:
+        heuristic = match_api_heuristic(user_input, apis)
+        if heuristic:
+            return heuristic
+
     history_ctx = ""
     if history:
         recent = history[-6:]
@@ -281,6 +266,14 @@ narrow lookup, prefer the broadest list/search API whose description fits.
 
     if os.getenv("LLM_DEBUG"):
         print(f"\n[debug] intent raw output:\n{raw}\n--- retry ---\n{raw_retry}\n", flush=True)
+
+    # Layer 4 — heuristic fallback when SLM output is unusable.
+    if apis:
+        fallback = match_api_heuristic(user_input, apis, min_score=1.5, min_margin=0.5)
+        if fallback:
+            fallback["reason"] = f"{fallback['reason']} (LLM parse failed; heuristic fallback)"
+            fallback["confidence"] = "medium"
+            return fallback
 
     return {"api_id": None, "confidence": "none", "reason": "could not parse"}
 

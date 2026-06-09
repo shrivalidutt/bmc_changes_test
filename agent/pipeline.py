@@ -174,6 +174,7 @@ def _step_select_api(ctx: PipelineContext, deps: PipelineDeps) -> StepResult:
         deps.api_catalog,
         deps.history,
         set(deps.api_map),
+        apis=deps.apis,
     )
     ctx.intent_result = intent
     api_id = intent.get("api_id")
