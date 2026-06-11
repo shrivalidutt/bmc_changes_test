@@ -72,6 +72,8 @@ List generated tools without chat:
 
 Each user request runs through discrete steps (`top_intent` → `select_api` → `extract_required` → …). Set `PIPELINE_DEBUG=1` to log each step’s structured output. Set `PIPELINE_ONE_STEP=1` to run only one step per HTTP call (for testing).
 
+Parameter extraction uses registry-derived confidence scoring (`param_confidence.py`). Tune with `PARAM_CONFIDENCE_THRESHOLD` (default `0.55`) — values that look like API topic words (e.g. “parameters” in “get agent parameters”) are rejected without hardcoded blocklists.
+
 ---
 
 ## Adding an API

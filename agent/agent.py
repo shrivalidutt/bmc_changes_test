@@ -301,7 +301,12 @@ def extract_params_heuristic(user_input, api, allowed_names=None):
     """
     Registry-driven extraction when the LLM returns nothing.
     Uses each parameter's name from api_registry.yaml (not hardcoded APIs).
+    Values below PARAM_CONFIDENCE_THRESHOLD are dropped (topic-word guard).
     """
+    from param_confidence import accept_param_value, score_param_extraction_confidence
+
+    _explicit_pattern_count = 7
+
     if not user_input or not user_input.strip():
         return {}
 
@@ -321,13 +326,38 @@ def extract_params_heuristic(user_input, api, allowed_names=None):
             rf"\b{re.escape(pname)}\s+['\"]([^'\"]+)['\"]",
             rf"\b{re.escape(pname)}\s+([A-Za-z0-9_*?.:-]+)(?:\s*$|[\s,;])",
         ]
-        for pat in patterns:
-            m = re.search(pat, user_input, re.IGNORECASE)
-            if not m:
-                continue
-            val = m.group(1).strip()
-            if not val or val.lower() in (pname.lower(), "add", "the", "a", "an"):
-                continue
+        for pat_idx, pat in enumerate(patterns):
+            if pat_idx >= _explicit_pattern_count:
+                # Bare "param word" — try all spans, keep highest-confidence match.
+                best_val = None
+                best_score = -1.0
+
+                for m in re.finditer(pat, user_input, re.IGNORECASE):
+                    val = m.group(1).strip()
+                    if not val or val.lower() in (pname.lower(), "add", "the", "a", "an"):
+                        continue
+                    sc = score_param_extraction_confidence(
+                        p, val, api, user_input, pattern_index=pat_idx
+                    )
+                    if sc > best_score and accept_param_value(
+                        p, val, api, user_input, pattern_index=pat_idx
+                    ):
+                        best_score = sc
+                        best_val = val
+                if best_val is None:
+                    continue
+                val = best_val
+            else:
+                m = re.search(pat, user_input, re.IGNORECASE)
+                if not m:
+                    continue
+                val = m.group(1).strip()
+                if not val or val.lower() in (pname.lower(), "add", "the", "a", "an"):
+                    continue
+                if not accept_param_value(
+                    p, val, api, user_input, pattern_index=pat_idx
+                ):
+                    continue
             if p.get("enum"):
                 match = next(
                     (a for a in p["enum"] if str(a).lower() == val.lower()),
@@ -437,7 +467,9 @@ Rules:
     )
     for key, val in extract_params_heuristic(user_input, api, allowed_names).items():
         parsed[key] = val
-    return _validate_and_filter_enums(api, parsed)
+    return _validate_and_filter_enums(
+        api, _sanitize_params_dict(api, parsed, user_input)
+    )
 
 
 def get_missing_params(api, collected):
@@ -496,40 +528,45 @@ def _param_map(api):
     return {p["name"]: p for p in api.get("parameters", [])}
 
 
-def _is_plausible_param_value(param_def, value, source_text=None):
-    """Reject LLM garbage: param name / schema type echoed as the value."""
+def _is_plausible_param_value(param_def, value, source_text=None, api=None):
+    """Reject topic vocabulary / low-confidence extractions (registry-driven)."""
+    from param_confidence import accept_param_value
+
     if value is None or value == "":
         return False
     sval = str(value).strip()
     if not sval:
         return False
-    pname = param_def["name"]
     low = sval.lower()
+    pname = param_def["name"]
     if low == pname.lower():
         return False
     if low in _SCHEMA_TYPES or low in _META_WORDS:
         return False
 
     if param_def.get("enum"):
-        return any(str(a).lower() == low for a in param_def["enum"])
+        if not any(str(a).lower() == low for a in param_def["enum"]):
+            return False
+
+    if api is not None and source_text is not None:
+        return accept_param_value(param_def, value, api, source_text)
 
     if source_text and low in source_text.lower():
         return True
-    # Wildcard / identifier-shaped filters (registry name/description patterns)
     if re.fullmatch(r"[\w*?.,:-]+", sval) and low not in ("add", "get", "list", "want"):
         return True
     return False
 
 
 def _sanitize_params_dict(api, params, source_text=None):
-    """Keep only values that look like real user input, not schema echoes."""
+    """Keep only values that pass registry-driven confidence scoring."""
     pmap = _param_map(api)
     cleaned = {}
     for name, value in (params or {}).items():
         p = pmap.get(name)
         if not p:
             continue
-        if not _is_plausible_param_value(p, value, source_text):
+        if not _is_plausible_param_value(p, value, source_text, api=api):
             continue
         if p.get("enum"):
             match = next(
