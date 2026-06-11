@@ -139,3 +139,24 @@ apis:
         required: true
         type: string
         description: The name of the Control-M server to query for agentless hosts.
+
+  - id: set_server_desired_state
+    name: Set Server Desired State
+    description: >
+      Sets the specified Control-M server to a desired state. Use this when the user
+      wants to change the state of a server to Up, Down, Recycle, or Ignore.
+    method: POST
+    endpoint: /automation-api/config/server/{server}/desiredState/{state}
+    requires_auth: true
+    parameters:
+      - name: server
+        in: path
+        required: true
+        type: string
+        description: The name of the Control-M server to modify.
+      - name: state
+        in: path
+        required: true
+        type: string
+        enum: ["Up", "Down", "Recycle", "Ignore"]
+        description: The desired state to set the server to (Up, Down, Recycle, Ignore).
