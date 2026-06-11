@@ -257,12 +257,12 @@ narrow lookup, prefer the broadest list/search API whose description fits.
     raw = llm_intent.invoke(_run_prompt()).content
     data = parse_intent_response(raw, valid_api_ids)
     if data:
-        return data
+        return _reconcile_llm_api_with_heuristic(user_input, data, apis)
 
     raw_retry = llm_intent.invoke(_run_prompt(strict_retry=True)).content
     data = parse_intent_response(raw_retry, valid_api_ids)
     if data:
-        return data
+        return _reconcile_llm_api_with_heuristic(user_input, data, apis)
 
     if os.getenv("LLM_DEBUG"):
         print(f"\n[debug] intent raw output:\n{raw}\n--- retry ---\n{raw_retry}\n", flush=True)
@@ -276,6 +276,36 @@ narrow lookup, prefer the broadest list/search API whose description fits.
             return fallback
 
     return {"api_id": None, "confidence": "none", "reason": "could not parse"}
+
+
+def _reconcile_llm_api_with_heuristic(user_input, data, apis):
+    """When the SLM picks a weaker API, prefer registry keyword routing."""
+    from api_router import match_api_heuristic, score_api_match
+
+    api_id = data.get("api_id")
+    if not api_id or not apis:
+        return data
+    api_by_id = {a["id"]: a for a in apis}
+    if api_id not in api_by_id:
+        return data
+
+    heuristic = match_api_heuristic(user_input, apis, min_score=2.0, min_margin=0.5)
+    if not heuristic or heuristic["api_id"] == api_id:
+        return data
+
+    llm_score = score_api_match(user_input, api_by_id[api_id])
+    heur_score = score_api_match(user_input, api_by_id[heuristic["api_id"]])
+    if heur_score >= llm_score + 1.0:
+        return {
+            **heuristic,
+            "reason": (
+                f"registry routing overrode LLM pick {api_id!r} "
+                f"(scores {heur_score:.1f} vs {llm_score:.1f})"
+            ),
+            "confidence": heuristic.get("confidence") or data.get("confidence"),
+            "reply": data.get("reply"),
+        }
+    return data
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -334,8 +364,25 @@ def extract_params_heuristic(
         for pat_idx, pat in enumerate(patterns):
             if pat_idx >= _explicit_pattern_count:
                 if not apply_confidence_filters:
-                    # Follow-up: only explicit assignment patterns, not bare "param word".
-                    continue
+                    # Follow-up: allow bare "agent HOSTNAME" if value looks like an id.
+                    m = re.search(pat, user_input, re.IGNORECASE)
+                    if not m:
+                        continue
+                    val = m.group(1).strip()
+                    if _is_junk_extraction_value(val, pname, strict=False):
+                        continue
+                    if not _looks_like_param_identifier(val):
+                        continue
+                    if p.get("enum"):
+                        match = next(
+                            (a for a in p["enum"] if str(a).lower() == val.lower()),
+                            None,
+                        )
+                        if match is not None:
+                            out[pname] = match
+                    else:
+                        out[pname] = val
+                    break
                 # Bare "param word" — try all spans, keep highest-confidence match.
                 best_val = None
                 best_score = -1.0
@@ -391,6 +438,7 @@ def phase2_extract_params(
     phase=None,
     *,
     apply_confidence_filters=True,
+    latest_followup_line=None,
 ):
     """
     Extract parameters from natural language. If allowed_names is set, only
@@ -443,7 +491,9 @@ sentence, if they refer back to a name/email/etc. they gave earlier."""
     if not apply_confidence_filters:
         collect_ctx = """
 Context: The assistant already asked the user for missing parameters. Extract
-every value they supply for the allowed parameters — treat their answer literally."""
+every value they supply for the allowed parameters — treat their answer literally.
+Common follow-up shapes: "server is HOST and agent HOST", "agent HOST" (no "is"),
+or a single hostname/id when only one parameter is still missing."""
 
     prompt = f"""Extract parameter values for this API call. You only have the
 parameter definitions below (from the API registry) — use each parameter's
@@ -502,12 +552,25 @@ Rules:
         user_input, api, allowed_names, apply_confidence_filters=apply_confidence_filters
     ).items():
         parsed[key] = val
-    return _validate_and_filter_enums(
+    result = _validate_and_filter_enums(
         api,
         _sanitize_params_dict(
             api, parsed, user_input, apply_confidence_filters=apply_confidence_filters
         ),
     )
+    if not apply_confidence_filters and latest_followup_line:
+        working = dict(already)
+        working.update(result)
+        reconcile_followup_extraction(
+            api,
+            working,
+            latest_followup_line,
+            allowed_names=allowed_names,
+        )
+        for key, val in working.items():
+            if key not in already or already.get(key) != val:
+                result[key] = val
+    return result
 
 
 def get_missing_params(api, collected):
@@ -581,26 +644,128 @@ def _is_junk_extraction_value(val: str, pname: str, *, strict: bool = True) -> b
     return False
 
 
+def _looks_like_param_identifier(value: str) -> bool:
+    """Hostname/id-shaped token (not grammar words like and/or)."""
+    sval = str(value).strip()
+    if not sval:
+        return False
+    low = sval.lower()
+    if low in _GRAMMAR_STOPWORDS or low in ("add", "the"):
+        return False
+    return bool(
+        re.search(r"\d", sval)
+        or re.search(r"[A-Z]", sval)
+        or "-" in sval
+        or "_" in sval
+        or "." in sval
+        or len(sval) >= 4
+    )
+
+
 def _extract_server_agent_pair(user_input: str, allowed_names) -> dict:
-    """Parse '{host} server and agent is {agent}' style answers."""
+    """Parse common server+agent answer phrasings (follow-up friendly)."""
     if allowed_names is not None and not {"server", "agent"} & set(allowed_names):
         return {}
-    m = re.search(
+    pair_patterns = (
         r"(\S+)\s+server\s+and\s+agent\s+(?:is\s+)?(\S+)",
-        user_input,
-        re.IGNORECASE,
+        r"server\s+is\s+(\S+)\s+and\s+agent\s+(?:is\s+)?(\S+)",
+        r"server\s+(\S+)\s+agent\s+(?:is\s+)?(\S+)",
+        r"for\s+(\S+)\s+agent\s+(?:is\s+)?(\S+)",
     )
-    if not m:
+    single_host = re.search(r"\bfor\s+(\S+)\s+agent\b", user_input, re.IGNORECASE)
+    if single_host:
+        host = single_host.group(1).strip()
+        if host and _looks_like_param_identifier(host):
+            out = {}
+            if allowed_names is None or "server" in allowed_names:
+                out["server"] = host
+            if allowed_names is None or "agent" in allowed_names:
+                out["agent"] = host
+            return out
+
+    for pat in pair_patterns:
+        m = re.search(pat, user_input, re.IGNORECASE)
+        if not m:
+            continue
+        host, ag = m.group(1).strip(), m.group(2).strip()
+        if not host or not ag or not _looks_like_param_identifier(host):
+            continue
+        if not _looks_like_param_identifier(ag):
+            continue
+        out = {}
+        if allowed_names is None or "server" in allowed_names:
+            out["server"] = host
+        if allowed_names is None or "agent" in allowed_names:
+            out["agent"] = ag
+        return out
+    return {}
+
+
+def assign_lone_followup_value(user_input: str, missing_param: dict, raw_params: dict) -> None:
+    """When one required param is left and the user sends a single token, assign it."""
+    text = (user_input or "").strip()
+    if not text or not missing_param:
+        return
+    if not re.fullmatch(r"\S+", text):
+        return
+    if not _looks_like_param_identifier(text):
+        return
+    raw_params[missing_param["name"]] = text
+
+
+def latest_supplemental_line(supplemental_text: str) -> str:
+    """Last non-empty line from accumulated follow-up text."""
+    lines = [ln.strip() for ln in (supplemental_text or "").splitlines() if ln.strip()]
+    return lines[-1] if lines else (supplemental_text or "").strip()
+
+
+def reconcile_followup_extraction(
+    api,
+    raw_params: dict,
+    latest_line: str,
+    *,
+    allowed_names=None,
+) -> dict:
+    """
+    Post-LLM follow-up pass on the latest user line: bare param patterns
+    (e.g. agent HOST without is) and lone-token fill for one missing required param.
+    """
+    line = (latest_line or "").strip()
+    if not line:
         return {}
-    host, ag = m.group(1).strip(), m.group(2).strip()
-    if not host or not ag:
+
+    req_miss, _ = get_missing_params(api, raw_params)
+    if not req_miss:
         return {}
-    out = {}
-    if allowed_names is None or "server" in allowed_names:
-        out["server"] = host
-    if allowed_names is None or "agent" in allowed_names:
-        out["agent"] = ag
-    return out
+
+    missing_names = {p["name"] for p in req_miss}
+    if allowed_names is not None:
+        target_names = missing_names & set(allowed_names)
+    else:
+        target_names = missing_names
+    if not target_names:
+        return {}
+
+    added: dict = {}
+    for pname in target_names:
+        hint = extract_params_heuristic(
+            line, api, allowed_names={pname}, apply_confidence_filters=False
+        )
+        for key, val in hint.items():
+            if key not in raw_params:
+                raw_params[key] = val
+                added[key] = val
+
+    req_miss, _ = get_missing_params(api, raw_params)
+    if len(req_miss) == 1:
+        pname = req_miss[0]["name"]
+        before = raw_params.get(pname)
+        assign_lone_followup_value(line, req_miss[0], raw_params)
+        after = raw_params.get(pname)
+        if after != before and pname not in added:
+            added[pname] = after
+
+    return added
 
 
 def _param_map(api):
@@ -965,6 +1130,7 @@ def collect_required_from_message(user_input, api, raw_params):
         raw_params,
         allowed_names=req_names,
         apply_confidence_filters=False,
+        latest_followup_line=user_input,
     )
     extracted = _drop_unmentioned_enums(api, extracted, user_input)
     raw_params.update(extracted)

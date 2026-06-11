@@ -28,6 +28,7 @@ from agent import (
     apply_optional_defaults,
     format_param_ask,
     get_missing_params,
+    latest_supplemental_line,
     phase1_detect_intent,
     phase2_extract_params,
     phase4_explain,
@@ -219,7 +220,9 @@ def _step_extract_required(ctx: PipelineContext, deps: PipelineDeps) -> StepResu
     api = deps.api_map[ctx.api_id]
     req_names = _required_param_names(api)
     extracted: dict = {}
-    strict_filters = not ctx.supplemental_query.strip()
+    is_followup = bool(ctx.supplemental_query.strip())
+    strict_filters = not is_followup
+    latest_line = latest_supplemental_line(ctx.supplemental_query) if is_followup else None
 
     if req_names:
         extracted = phase2_extract_params(
@@ -228,6 +231,7 @@ def _step_extract_required(ctx: PipelineContext, deps: PipelineDeps) -> StepResu
             ctx.raw_params,
             allowed_names=req_names,
             apply_confidence_filters=strict_filters,
+            latest_followup_line=latest_line,
         )
         extracted = _drop_unmentioned_enums(api, extracted, ctx.source_text)
         ctx.raw_params.update(extracted)

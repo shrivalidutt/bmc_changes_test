@@ -176,7 +176,10 @@ class AutomationChatSession:
             self.reset()
             return
 
-        self.pipeline_ctx.supplemental_query = user_input
+        prior = self.pipeline_ctx.supplemental_query.strip()
+        self.pipeline_ctx.supplemental_query = (
+            f"{prior}\n{user_input}".strip() if prior else user_input
+        )
         api = self.api_map[self.pipeline_ctx.api_id]
         req_names = _required_param_names(api)
         if req_names:
@@ -186,6 +189,7 @@ class AutomationChatSession:
                 self.pipeline_ctx.raw_params,
                 allowed_names=req_names,
                 apply_confidence_filters=False,
+                latest_followup_line=user_input,
             )
             extracted = _drop_unmentioned_enums(
                 api, extracted, self.pipeline_ctx.source_text
