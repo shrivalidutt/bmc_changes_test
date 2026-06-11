@@ -1,0 +1,159 @@
+1. Why is the installation package not detected by the Control-M Agent Deployment tool?
+
+The installation packages names expected by the Control-M Agent Deployment tool are case sensitive. Please keep the package name as it was download from the Electronic Product Distribution (EPD) site. Sometimes, when downloading the Linux/UNIX packages on Windows, the Z extension is changed to lower case z, or is missing ".tar" from the name.  Please validate that the Z extension is in capital and that it has ".tar" in the name. Otherwise, please see Knowledge Article 000318256 for more details to rename the file (https://bmcapps.my.site.com/casemgmt/sc_KnowledgeArticle?sfdcid=000318256). 
+For Windows only, the package might BLOCKED. To verify, open the 'Properties' of the file to check if it has "Unblock" on lower right hand corner of properties screen. Unblock the file and logout and log back into CCM for changes to take effect.
+2. Is there downtime when performing a Control-M/Agent upgrade?
+
+Control-M/Agent 8.0.00 Fix Pack 100, there is no downtime for UNIX/Linux agents.
+Control-M/Agent 9.0.00 Fix Pack 100, there is no downtime for agents running on Windows.
+For previous versions there is a brief downtime.
+
+3. Can I downgrade a Control-M/Agent that was upgraded outside of the Control-M Agent Deployment tool?
+
+No, only the Control-M/Agents upgraded with the Control-M Agent Deployment tool can be downgraded.
+
+4. Why are the Control-M/Agent fix packs not detected by the Control-M Agent Deployment tool?
+
+The only fix packs detected by the Control-M Agent Deployment tool are the fix packs released for Control-M/Agent 9.0.00.  Please upgrade the agent to version 9.0.00 before deploying fix packs.
+
+If you are running in Compatibility Mode, and are using a client 9.0.00 and while trying to deploy a fixpack for newer versions (9.0.18 and higher), the fixpack package is not detected, please upgrade the client.
+
+5. How does the Control-M Agent Deployment tool transfer the fix pack file to the Control-M/Agent?
+
+ The packages are transferred via clear text using the ports opened for the communication between the Control-M/Server and the Control-M/Agent.
+
+6.  Why do I get a platform error when upgrading a Control-M/Agent? I have copied the correct installation package to the repository.
+
+Before Control-M 9.0.00, the Control-M/Agents running on Linux were installed in 32 bit mode even when they are running on a 64 bit Linux OS. In order to avoid these errors, please also download the 32 bit version of the installation package.
+
+7. Why do I get the error "PERL_PATH couldn't be resolved" or "PERL_LIB_PATH installation couldn't be resolved" while performing an upgrade activity?
+
+The activities performed by the Control-M Agent Deployment tool use the bmcperl directory that's created with the Control-M/Agent installation; it's very possible that this directory has been deleted and that's the cause of these error messages. You can copy the directory from another Control-M/Agent with the same version and paste it on the agent that's facing this error.
+
+8. What are the most useful configuration parameters used by the Control-M Agent Deployment tool?
+
+The most useful parameters are:
+
+Control-M/Server parameters
+
+- DEPLOYMENT_THREADS. Determines the maximum number of upgrade or downgrade processes that can run simultaneously. Default: 5
+
+- AD_RETAIN_PACKAGES. Determines the number of days that the installation package is saved in the Control-M/Server cache. Default 30
+
+Valid Values:
+0: Never remove
+1-365
+
+ Control-M/Agent System Parameters:
+
+- AD_GA_RETAIN_DAYS. Determines the number of days to keep the backup4restore directory on the Control-M/Agent, which is used to downgrade to the original version of the Control-M/Agent, after an upgrade has occurred.
+
+NOTE: If you do not plan to downgrade the Control-M/Agent, it is recommended to delete the directory to save disk space.
+
+Default: 30
+
+Control-M/Enterprise Manager System Parameters:
+
+- CentralDeployLocation. Determines a specific network location for the packages repository.
+
+NOTE: If the Control-M/Enterprise Manager is running on Windows, verify that the user defined in the Control-M/Enterprise Manager Configuration Agent Windows service has access to the relevant network location.
+
+ The Connect with Control-M session for the Control-M Agent Deployment Tool is available on YouTube. You can access it by following the next link: https://youtu.be/YL5CVyRm3tw
+
+9) How much diskspace is required for automatic deployment to run?
+ 
+It requires 5 times the original packages size(zip or tar.Z file of agent installation file):
+ 
+Because we need to transfer ( encoded to base 64 )
+Decode to binary
+Create backup of current agent for long run
+Upgrade and keep old and new binaries to work in parallel to support upgrade with no down time
+ 
+10) Is deployment support on Agent installed on Windows Cluster?
+Yes it is.
+ 
+11) Can I use the Control-M Agent Deployment Tool to upgrade Control-M/Agent 7.0.00 to Control-M/Agent 8.0.00?
+No, Agent Deployment Tool is only supported for upgrading to Control-M/Agent 9.0.00.
+ 
+12) What is the lowest version of Control-M Agent can be supported with Agent Deployment upgrade?
+Control-M Agent 6.4.01 is the lowest version supported. It is highly recommended to install the latest fix pack 500 before upgrade with agent deployment tool.
+ 
+13) Does the Automation API (AAPI) support Agent Deployment?
+Yes, the provision upgrade commands can be used either by using the ctm-cli application or by making a REST call to the Enterprise Manager Server.
+
+What is Control-M software used for?
+
+Control-M is a workflow automation tool used to orchestrate application and data workflows. It is designed to help organizations integrate, automate, and manage their workflows across various platforms, supporting system integrations and data pipelines.
+
+Does Control-M require coding?
+
+Control-M does not require extensive coding for designing and managing workflows. It provides a graphical user interface where users can visually design and configure workflows using drag-and-drop functionality, which makes it intuitive and user-friendly.
+
+
+What does a Control-M agent do?
+
+A Control-M agent is a component of the Control-M architecture that executes and monitors jobs on the local system where it is installed. It is responsible for running the jobs as defined in the Control-M Server, reporting the status of jobs back to the server, and ensuring proper communication between the server and the host system.
+
+What are Control-M jobs in SAP?
+
+Control-M jobs in SAP are tasks scheduled and managed using Control-M to automate and orchestrate various SAP processes. These jobs can include a wide range of functions such as system management jobs, workflow jobs, maintenance jobs and many others. These jobs are designed to automate and simplify SAP processes, reducing manual intervention and improving system performance and efficiency. Control-M provides end-to-end orchestration across SAP and non-SAP workloads, integrating SAP jobs with other enterprise systems to optimize business processes.
+
+What are the automation API components in Control-M?
+
+The Control-M Automation API consists of several components designed to facilitate automated management of job workflows as code. These components include developer kit, Control-M automation API server, configuration API server. These components work together to enable seamless automation, integration, and management of workflows within Control-M, offering a robust interface for developers to interact programmatically with Control-M services.
+
+Q1. Where can I download the Control-M Application Integrator installation binary?
+A1. Control-M Application Integrator is included with the Control-M Application Pack and is installed as part of the Control-M/Enterprise Manager in versions prior to 9.0.21.
+Starting with version 9.0.21, Application Integrator is bundled with the Control-M/Agent and no longer included in the Application Pack.
+
+Q2. Which versions of Control-M/Enterprise Manager are supported by Control-M Application Integrator?
+A2.
+- In version 9.0.21 and later, Application Integrator matches the version of the installed Control-M/Agent. Compatibility information is available in the Release Notes.
+- In versions earlier than 9.0.21, Application Integrator matches the version of the installed Control-M/Enterprise Manager.
+
+Q3. Which Control-M components are required for Control-M Application Integrator?
+A3. The following components are required:
+- Control-M/Enterprise Manager
+- Control-M Web
+- Control-M/Agent
+
+Q4. Where can I find documentation for Control-M Application Integrator?
+A4. Documentation is available at the following link:
+https://documents.bmc.com/supportu/9.0.22/en-US/Documentation/Application_Integrator.htm
+
+Q5. Are Control-M Application Integrator point patches cumulative?
+A5. Patch behavior may vary. Some point patches are cumulative, while others are not. If you are unsure, contact BMC Support for guidance.
+
+Q1: Who to contact if I have any licensing queries for Control-M Products?
+Please do approach your Control-M Account Manager for any Control-M Licensing queries.
+If you do not know who is your Control-M Account Manager, please do open a case with the BMC Software Customer Care Team at:
+Customer Care: customer_care@bmc,com
+
+Or using the below link to register yourself to be contacted:
+Go to: https://www.bmc.com/
+Then click on "Contact BMC"
+
+Q2: Where can I get or request for a Trial version of Control-M?
+BMC Software Product Trials can be found here: 
+https://www.bmc.com/product-trials.html
+Request for Control-M Trial Version: 
+https://www.bmc.com/forms/control-m-trial.html
+
+Q3. How Control-M and the Control-M Add-ons are being licensed and the pricing?
+Please do contact your Account Manager for assistance or registered here to be contacted:
+https://www.bmc.com/forms/pricing-request.html
+
+Q4: Where can I find more information on Control-M?
+Information related to Control-M Workload Automation can be found here:
+​​​​​​​https://www.bmc.com/it-solutions/job-scheduling-workload-automation.html
+
+Q5: How to I check the current license for the Control-M product?
+Do contact us using one of the following methods:
+- E-mail the BMC Software Customer Care at customer_care@bmc.com and request for the license information
+- Contact your company account manager and request for the license information
+- Do the following steps to check the Control-M products that are licensed:
+i.   Go to www.bmc.com/support
+ii.  Click in "Products Download"
+iii.  Login to site as requested
+iv.  Agree with Export Compliance and Access Terms
+v.  Click at Licensed Products, you are going to receive a list with all products that you can install.

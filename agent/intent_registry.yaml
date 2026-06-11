@@ -56,3 +56,25 @@ intents:
       resources, get configuration, set a parameter, etc. Route to API
       selection from api_registry.yaml.
     triggers: []
+
+  - id: faq_question
+    name: FAQ Question
+    description: >
+      User asks a general technical or domain question about Control-M or the automation system, 
+      rather than asking to execute an API or asking for help on bot usage.
+    triggers:
+      - how do i
+      - what is
+      - what are
+      - why
+      - where
+      - can i
+      - can you
+      - can u
+      - tell me
+      - explain
+      - does
+      - is there
+      - who
+      - question
+      - how much  

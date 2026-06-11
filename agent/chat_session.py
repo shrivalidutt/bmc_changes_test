@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Optional
-
+import faq_handler
 from intent_router import classify_top_intent, load_intent_registry, match_intent_heuristic
+
 from pipeline import (
     PipelineContext,
     PipelineDeps,

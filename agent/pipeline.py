@@ -162,6 +162,19 @@ def _step_top_intent(ctx: PipelineContext, deps: PipelineDeps) -> StepResult:
             pipeline_complete=True,
         )
 
+    if top["intent"] == "faq_question":
+        # pyrefly: ignore [missing-import]
+        import faq_handler
+        print("\n Consulting Control-M Documentation...")
+        answer = faq_handler.get_answer(ctx.original_query)
+        return StepResult(
+            step=PipelineStep.TOP_INTENT,
+            output=top,
+            next_step=PipelineStep.DONE,
+            user_message=answer,
+            pipeline_complete=True,
+        )
+
     return StepResult(
         step=PipelineStep.TOP_INTENT,
         output=top,

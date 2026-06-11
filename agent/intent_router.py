@@ -15,7 +15,7 @@ from agent import build_api_catalog, llm_intent, safe_json_parse
 BASE_DIR = Path(__file__).parent
 INTENT_REGISTRY_PATH = str(BASE_DIR / "intent_registry.yaml")
 
-VALID_TOP_INTENTS = frozenset({"chitchat", "help", "tool_call"})
+VALID_TOP_INTENTS = frozenset({"chitchat", "help", "tool_call", "faq_question"})
 
 
 def load_intent_registry():
@@ -130,6 +130,9 @@ def classify_top_intent(user_input: str, registry, apis, history) -> dict:
     if hit == "help":
         return {"intent": "help", "reply": build_help_reply(apis)}
 
+    if hit == "faq_question":
+        return {"intent": "faq_question", "reply": None}
+
     norm = _normalize(user_input)
     if _registry_matches_api(user_input, apis):
         return {"intent": "tool_call", "reply": None}
@@ -156,6 +159,7 @@ Intents:
 Rules:
 - chitchat: greetings, thanks, small talk ONLY — no automation task
 - help: asks what you can do / available commands
+- faq_question: general questions about how things work, domain knowledge
 - tool_call: wants to run a BMC automation action (list, get, set, search, configure)
 
 User said:
@@ -164,7 +168,7 @@ User said:
 </user_input>
 
 Respond with ONLY JSON:
-{{"intent": "chitchat"|"help"|"tool_call", "reply": "<short friendly reply if chitchat, else null>"}}"""
+{{"intent": "chitchat"|"help"|"faq_question"|"tool_call", "reply": "<short friendly reply if chitchat, else null>"}}"""
 
     raw = llm_intent.invoke(prompt).content
     data = safe_json_parse(raw) or {}

@@ -164,6 +164,12 @@ class BmcChatbotWidget extends HTMLElement {
     
     // Format bold: **text** -> <strong>text</strong>
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+    // Make URLs clickable
+    html = html.replace(
+      /(https?:\/\/[^\s<]+)/g,
+      '<a href="$1" target="_blank" rel="noopener noreferrer" style="color: #f5851f; text-decoration: underline;">$1</a>'
+    );
     
     // Format bullet lists:
     // Split lines
