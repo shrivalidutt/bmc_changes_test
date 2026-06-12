@@ -70,7 +70,7 @@ apis:
       and values. Optional `extendedData` requests additional hidden/extended
       fields when supported by the server.
     method: GET
-    endpoint: /config/server/{server}/agent/{agent}/params
+    endpoint: /automation-api/config/server/{server}/agent/{agent}/params
     requires_auth: true
     parameters:
       - name: server
@@ -99,7 +99,7 @@ apis:
       must be JSON with a `value` field. Use when the user wants to change or
       configure a specific agent parameter.
     method: POST
-    endpoint: /config/server/{server}/agent/{agent}/param/{name}
+    endpoint: /automation-api/config/server/{server}/agent/{agent}/param/{name}
     requires_auth: true
     parameters:
       - name: server

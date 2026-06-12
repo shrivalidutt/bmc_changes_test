@@ -32,6 +32,7 @@ from agent import (
     phase1_detect_intent,
     phase2_extract_params,
     phase4_explain,
+    check_and_format_error,
 )
 
 
@@ -350,13 +351,16 @@ def _step_execute(ctx: PipelineContext, deps: PipelineDeps) -> StepResult:
             next_step=PipelineStep.EXPLAIN,
         )
     except Exception as exc:
+        err_msg = check_and_format_error(api, f"ERROR: {exc}")
+        if not err_msg:
+            err_msg = f"I ran into an unexpected issue: {exc}"
         output = {"error": str(exc)}
         ctx.record(PipelineStep.EXECUTE, output)
         return StepResult(
             step=PipelineStep.EXECUTE,
             output=output,
             next_step=PipelineStep.DONE,
-            user_message=f"Something went wrong: {exc}",
+            user_message=err_msg,
             pipeline_complete=True,
             error=str(exc),
         )

@@ -1283,7 +1283,141 @@ def format_confirmation(api, converted):
 #  PHASE 4 — Execute & Explain in Natural Language
 # ═══════════════════════════════════════════════════════════════
 
+def clean_chatbot_response(text):
+    if not text:
+        return ""
+    text = text.strip()
+    # Remove common prefix phrases from small chat models
+    prefixes = [
+        "friendly chat response:",
+        "friendly response:",
+        "here is a friendly explanation:",
+        "here is the explanation:",
+        "chatbot response:",
+        "assistant response:",
+        "explanation:",
+    ]
+    low_text = text.lower()
+    for prefix in prefixes:
+        if low_text.startswith(prefix):
+            text = text[len(prefix):].strip()
+            low_text = text.lower()
+
+    # Extract only the first non-empty line or paragraph to avoid model commentary/parrots
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if lines:
+        text = lines[0]
+
+    # Strip quotes
+    text = text.strip("\"' ")
+    return text
+
+
+def check_and_format_error(api, raw_response):
+    if not raw_response:
+        return None
+
+    # Handle string errors from tool_generator or exception (starts with "ERROR:" or "ERROR ")
+    is_error = False
+    status_code = None
+    err_detail = None
+
+    raw_response_str = str(raw_response).strip()
+
+    if raw_response_str.startswith("ERROR:") or raw_response_str.startswith("ERROR "):
+        is_error = True
+        err_detail = raw_response_str
+        # Extract status code from parentheses or search
+        m = re.search(r'\((\d{3})\)', raw_response_str)
+        if m:
+            status_code = int(m.group(1))
+        else:
+            # check common status codes in string using word boundaries
+            for code in ["400", "401", "403", "404", "500", "502", "503", "504"]:
+                if re.search(r'\b' + code + r'\b', raw_response_str):
+                    status_code = int(code)
+                    break
+    else:
+        try:
+            payload = json.loads(raw_response_str)
+            if isinstance(payload, dict):
+                status_code = payload.get("status_code")
+                success = payload.get("success", True)
+                if success is False or (isinstance(status_code, int) and status_code >= 400):
+                    is_error = True
+                    # Try to extract the error description from payload
+                    data = payload.get("data")
+                    if isinstance(data, dict):
+                        err_detail = data.get("raw") or data.get("message") or data.get("error") or data.get("description")
+                    if not err_detail:
+                        err_detail = payload.get("message") or payload.get("error") or payload.get("description")
+                    if not err_detail:
+                        err_detail = str(payload)
+        except Exception:
+            # Non-JSON response, might be HTML error or raw text
+            # Check for standard HTTP error indicators
+            if "404" in raw_response_str or "Page not found" in raw_response_str:
+                is_error = True
+                status_code = 404
+                err_detail = "Page not found"
+            elif "500" in raw_response_str or "Internal Server Error" in raw_response_str:
+                is_error = True
+                status_code = 500
+                err_detail = "Internal Server Error"
+            elif "403" in raw_response_str or "Forbidden" in raw_response_str:
+                is_error = True
+                status_code = 403
+                err_detail = "Forbidden"
+            elif "401" in raw_response_str or "Unauthorized" in raw_response_str:
+                is_error = True
+                status_code = 401
+                err_detail = "Unauthorized"
+            elif "502" in raw_response_str or "Bad Gateway" in raw_response_str:
+                is_error = True
+                status_code = 502
+                err_detail = "Bad Gateway"
+
+    if not is_error:
+        return None
+
+    if isinstance(err_detail, str):
+        # Clean HTML tags if any (e.g. Page not found !!!)
+        err_detail = re.sub(r'<[^>]+>', ' ', err_detail).strip()
+        # Clean extra whitespace
+        err_detail = re.sub(r'\s+', ' ', err_detail)
+    else:
+        err_detail = str(err_detail) if err_detail is not None else ""
+
+    # Clean error details of redundant JSON/ERROR prefixes
+    if err_detail.startswith("ERROR:"):
+        err_detail = err_detail[len("ERROR:"):].strip()
+
+    code_val = status_code if status_code else "unknown"
+
+    # Deterministic templates for standard errors (ensure high quality, consistent friendly output)
+    if status_code == 404:
+        return f"I couldn't find the requested resource on the server (Error Code: 404). Please verify your server or agent parameters and try again."
+    elif status_code == 500:
+        if "Incorrect username or password" in err_detail or "Authentication failed" in err_detail:
+            return f"I encountered an authentication error while logging in (Error Code: 500). Please check the username and password in the configuration."
+        return f"The server encountered an internal error and could not complete the request (Error Code: 500). Please verify the server parameters or try again later."
+    elif status_code in (401, 403):
+        return f"I ran into a permission or authentication issue while trying to access the service (Error Code: {status_code}). Please verify your credentials."
+    elif status_code in (502, 503, 504):
+        return f"I was unable to establish a connection to the server or the request timed out (Error Code: {status_code}). Please check if the host is reachable and your VPN/network is active."
+    
+    # Fallback template for connection/timeout errors
+    if "connect" in err_detail.lower() or "timeout" in err_detail.lower() or "reach" in err_detail.lower():
+        return f"I was unable to connect to the server. Please check your network or VPN settings (Error Code: {code_val})."
+        
+    return f"I ran into an issue while requesting the {api['name']} API (Error Code: {code_val}). Details: {err_detail}."
+
+
 def phase4_explain(api, raw_response, original_query):
+    err_msg = check_and_format_error(api, raw_response)
+    if err_msg:
+        return err_msg
+
     api_id = api.get("id")
     if api_id == "get_centralized_connection_profiles":
         return _format_centralized_connection_profiles(raw_response)
@@ -1376,6 +1510,10 @@ def collect_required_from_message(user_input, api, raw_params):
 def execute_and_explain(api, converted_params, tool_map, original_query):
     safe_params = _enforce_types(api, converted_params)
     result = tool_map[api["id"]].invoke(json.dumps(safe_params))
+    err_msg = check_and_format_error(api, result)
+    if err_msg:
+        return err_msg
+
     api_id = api.get("id")
     if api_id == "get_centralized_connection_profiles":
         return _format_centralized_connection_profiles(result)
