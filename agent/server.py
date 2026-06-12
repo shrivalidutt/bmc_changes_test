@@ -12,7 +12,13 @@ pipeline_complete or waiting_for_user.
 from __future__ import annotations
 
 import os
+import sys
 import uuid
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request

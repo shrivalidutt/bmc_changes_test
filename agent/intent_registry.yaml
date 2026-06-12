@@ -30,10 +30,13 @@ intents:
       - bye
       - goodbye
       - see you
-    default_reply: >
-      Hello! I'm your Control-M automation assistant. I can run registered
-      BMC APIs for you — for example, list connection profiles or inspect
-      agent parameters. What would you like to do?
+    default_reply: |
+      Hello! I'm your Control-M automation assistant. I can run these BMC APIs for you:
+      • Get Centralized Deployed Connection Profiles
+      • Get Agent Parameters
+      • Set Agent Parameter
+
+      What would you like to do?
 
   - id: help
     name: Help / capabilities

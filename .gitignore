@@ -1,0 +1,19 @@
+# Node.js
+node_modules/
+api/node_modules/
+package-lock.json
+api/package-lock.json
+
+# Python
+agent/.venv/
+agent/.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDEs and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

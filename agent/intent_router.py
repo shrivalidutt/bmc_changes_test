@@ -19,7 +19,7 @@ VALID_TOP_INTENTS = frozenset({"chitchat", "help", "tool_call"})
 
 
 def load_intent_registry():
-    with open(INTENT_REGISTRY_PATH) as f:
+    with open(INTENT_REGISTRY_PATH, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -66,11 +66,20 @@ def _looks_like_automation_request(norm: str) -> bool:
 
 
 def build_help_reply(apis) -> str:
-    catalog = build_api_catalog(apis)
+    table_lines = [
+        "| Service | Description |",
+        "| :--- | :--- |"
+    ]
+    for api in apis:
+        desc = api.get("description", "").strip()
+        first_sentence = desc.split(".")[0] + "." if desc else ""
+        table_lines.append(f"| **{api['name']}** | {first_sentence} |")
+    
+    table_str = "\n".join(table_lines)
     return (
         "I can run these BMC automation APIs for you:\n\n"
-        f"{catalog}\n\n"
-        "Describe what you need in plain language — for example:\n"
+        f"{table_str}\n\n"
+        "Describe what you need — for example:\n"
         '• "List centralized connection profiles of type Database"\n'
         '• "Get parameters for server PROD and agent AG001"\n'
         '• "Set agent parameter X to value Y"\n\n'
