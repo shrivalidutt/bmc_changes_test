@@ -1,7 +1,13 @@
 import json
 import os
+import sys
 import re
 import yaml
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 from datetime import datetime, timedelta
 from pathlib import Path
 from llm_provider import create_llm, warmup_llm
@@ -14,13 +20,14 @@ TODAY = datetime.now().strftime("%Y-%m-%d")
 
 # ── LOAD REGISTRY ─────────────────────────────────────────────
 def load_registry():
-    with open(REGISTRY_PATH) as f:
+    with open(REGISTRY_PATH, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 # ── LLM (see llm_provider.py) ─────────────────────────────────
-llm_intent = create_llm(max_new_tokens=128)
-llm = create_llm(max_new_tokens=192)
-llm_convert = create_llm(max_new_tokens=384)
+llm_intent = create_llm(max_new_tokens=48)
+llm = create_llm(max_new_tokens=128)
+llm_extract = create_llm(max_new_tokens=48)
+llm_convert = create_llm(max_new_tokens=48)
 
 # Linear API flow (no confirmation steps):
 #   IDLE → top intent → API selection → extract params from same query → call API
@@ -544,7 +551,7 @@ Rules:
 
     parsed = _sanitize_params_dict(
         api,
-        safe_json_parse(llm.invoke(prompt).content) or {},
+        safe_json_parse(llm_extract.invoke(prompt).content) or {},
         user_input,
         apply_confidence_filters=apply_confidence_filters,
     )
@@ -1033,6 +1040,228 @@ def apply_conversion_and_reconcile(
     return converted, req_miss
 
 
+def _flatten_response_dict(item, parent_key=""):
+    flat = {}
+    if isinstance(item, dict):
+        for key, value in item.items():
+            new_key = f"{parent_key}.{key}" if parent_key else key
+            flat.update(_flatten_response_dict(value, new_key))
+    else:
+        flat[parent_key] = item
+    return flat
+
+
+def _truncate_cell(value, max_len=50):
+    text = "" if value is None else str(value)
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3] + "..."
+
+
+def _format_text_table(headers, rows):
+    header_line = "| " + " | ".join(headers) + " |"
+    separator = "| " + " | ".join("---" for _ in headers) + " |"
+    lines = [header_line, separator]
+    for row in rows:
+        cells = []
+        for h in headers:
+            val = row.get(h, "")
+            val_str = str(val).replace("|", "\\|")
+            cells.append(val_str)
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+def _format_dict_table(data, key_label="Key", value_label="Value"):
+    rows = []
+    for key in sorted(data.keys(), key=str):
+        value = data[key]
+        if isinstance(value, (dict, list)):
+            value = json.dumps(value, ensure_ascii=False)
+        rows.append({key_label: str(key), value_label: str(value)})
+    return _format_text_table([key_label, value_label], rows)
+
+
+def _format_generic_data(data):
+    if isinstance(data, dict):
+        return _format_dict_table(data, key_label="Parameter", value_label="Value")
+    if isinstance(data, list) and all(isinstance(item, dict) for item in data):
+        rows = []
+        all_keys = set()
+        for item in data:
+            flat = _flatten_response_dict(item)
+            rows.append(flat)
+            all_keys.update(flat.keys())
+        headers = sorted(all_keys)[:10]
+        return _format_text_table(headers, rows)
+    return str(data)
+
+
+def _format_centralized_connection_profiles(raw_response):
+    try:
+        payload = json.loads(raw_response)
+    except Exception:
+        return raw_response
+
+    if not isinstance(payload, dict):
+        return raw_response
+
+    if not payload.get("success"):
+        return raw_response
+
+    data = payload.get("data")
+    if not data:
+        return "No centralized connection profiles were found."
+
+    if isinstance(data, dict) and all(isinstance(v, dict) for v in data.values()):
+        rows = []
+        all_keys = set()
+        for profile_name, profile_data in data.items():
+            flat = _flatten_response_dict(profile_data)
+            flat["Profile"] = profile_name
+            rows.append(flat)
+            all_keys.update(flat.keys())
+
+        priority = [
+            "Profile",
+            "Type",
+            "User",
+            "SapClient",
+            "Description",
+            "Centralized",
+            "ApplicationServerLogon.Host",
+            "ApplicationServerLogon.SystemNumber",
+            "DatabaseServerLogon.Host",
+            "DatabaseServerLogon.Port",
+            "DatabaseServerLogon.Database",
+            "Host",
+            "Port",
+            "Database",
+        ]
+
+        ordered_keys = [k for k in priority if k in all_keys]
+        ordered_keys += sorted(k for k in all_keys if k not in ordered_keys)
+
+        profile_blocks = []
+        keys_to_show = [k for k in ordered_keys if k != "Profile"]
+
+        for row in rows:
+            profile_name = row.get("Profile", "")
+            lines = [
+                f"**Profile: {profile_name}**",
+                "",
+                "| Property | Value |",
+                "| :--- | :--- |"
+            ]
+            for k in keys_to_show:
+                val = row.get(k, "")
+                if val is None:
+                    val = ""
+                val_str = str(val).replace("|", "\\|")
+                lines.append(f"| {k} | {val_str} |")
+            profile_blocks.append("\n".join(lines))
+
+        profiles_content = "\n\n".join(profile_blocks)
+        if len(rows) == 1:
+            return f"Found 1 centralized connection profile:\n\n{profiles_content}"
+        return f"Found {len(rows)} centralized connection profiles:\n\n{profiles_content}"
+
+    if isinstance(data, list) and all(isinstance(item, dict) for item in data):
+        rows = []
+        all_keys = set()
+        for item in data:
+            flat = _flatten_response_dict(item)
+            rows.append(flat)
+            all_keys.update(flat.keys())
+        
+        ordered_keys = sorted(all_keys)
+        profile_blocks = []
+        
+        for idx, row in enumerate(rows, 1):
+            name_key = next((k for k in ["Profile", "profile", "name", "Name", "ProfileName", "profileName"] if k in row), None)
+            profile_name = str(row[name_key]) if name_key else f"Profile #{idx}"
+            
+            keys_to_show = [k for k in ordered_keys if k != name_key]
+            
+            lines = [
+                f"**Profile: {profile_name}**",
+                "",
+                "| Property | Value |",
+                "| :--- | :--- |"
+            ]
+            for k in keys_to_show:
+                val = row.get(k, "")
+                if val is None:
+                    val = ""
+                val_str = str(val).replace("|", "\\|")
+                lines.append(f"| {k} | {val_str} |")
+            profile_blocks.append("\n".join(lines))
+            
+        profiles_content = "\n\n".join(profile_blocks)
+        if len(rows) == 1:
+            return f"Found 1 centralized connection profile:\n\n{profiles_content}"
+        return f"Found {len(rows)} centralized connection profiles:\n\n{profiles_content}"
+
+    if isinstance(data, dict):
+        return _format_dict_table(data, key_label="Field", value_label="Value")
+
+    return str(data)
+
+
+def _format_agent_parameters(raw_response):
+    try:
+        payload = json.loads(raw_response)
+    except Exception:
+        return raw_response
+
+    if not isinstance(payload, dict):
+        return raw_response
+
+    if not payload.get("success"):
+        return raw_response
+
+    data = payload.get("data")
+    if not data:
+        return "No agent parameters were found."
+
+    if isinstance(data, dict):
+        table = _format_dict_table(data, key_label="Parameter", value_label="Value")
+        return f"Found {len(data)} agent parameters:\n\n{table}"
+
+    if isinstance(data, list) and all(isinstance(item, dict) for item in data):
+        return _format_generic_data(data)
+
+    return str(data)
+
+
+def _format_set_agent_parameter(raw_response):
+    try:
+        payload = json.loads(raw_response)
+    except Exception:
+        return raw_response
+
+    if not isinstance(payload, dict):
+        return raw_response
+
+    if not payload.get("success"):
+        return raw_response
+
+    if payload.get("data"):
+        data = payload["data"]
+        if isinstance(data, dict):
+            if "name" in data and "value" in data:
+                return f"Updated agent parameter '{data['name']}' to '{data['value']}'."
+            return f"Agent parameter updated successfully:\n\n{_format_generic_data(data)}"
+        if isinstance(data, list):
+            return f"Agent parameter updated successfully.\n\n{_format_generic_data(data)}"
+        return f"Agent parameter updated successfully: {data}"
+
+    if payload.get("status_code") and payload.get("status_code") < 400:
+        return "Agent parameter updated successfully."
+
+    return "Agent parameter updated successfully."
+
+
 def format_confirmation(api, converted):
     """
     Show every parameter the server will receive: values the user gave,
@@ -1055,6 +1284,14 @@ def format_confirmation(api, converted):
 # ═══════════════════════════════════════════════════════════════
 
 def phase4_explain(api, raw_response, original_query):
+    api_id = api.get("id")
+    if api_id == "get_centralized_connection_profiles":
+        return _format_centralized_connection_profiles(raw_response)
+    if api_id == "get_agent_parameters":
+        return _format_agent_parameters(raw_response)
+    if api_id == "set_agent_parameter":
+        return _format_set_agent_parameter(raw_response)
+
     prompt = f"""You are a helpful Automation API Assistant.
 Explain the following API response in clear, friendly natural language.
 
@@ -1139,6 +1376,13 @@ def collect_required_from_message(user_input, api, raw_params):
 def execute_and_explain(api, converted_params, tool_map, original_query):
     safe_params = _enforce_types(api, converted_params)
     result = tool_map[api["id"]].invoke(json.dumps(safe_params))
+    api_id = api.get("id")
+    if api_id == "get_centralized_connection_profiles":
+        return _format_centralized_connection_profiles(result)
+    if api_id == "get_agent_parameters":
+        return _format_agent_parameters(result)
+    if api_id == "set_agent_parameter":
+        return _format_set_agent_parameter(result)
     return phase4_explain(api, result, original_query)
 
 

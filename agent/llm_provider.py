@@ -6,12 +6,22 @@ Set TINYLLAMA_MODEL to override the Hugging Face model id
 """
 
 import os
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import torch
+
+# Limit CPU threads to prevent thread-switching CPU thrashing
+torch.set_num_threads(4)
+
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 try:
     from dotenv import load_dotenv
@@ -62,7 +72,7 @@ def _load_model():
         return _model, _tokenizer, _device
 
     _device = _pick_device()
-    dtype = torch.float16 if _device != "cpu" else torch.float32
+    dtype = torch.float16 if _device != "cpu" else torch.bfloat16
     hf = _hf_kwargs()
 
     t0 = time.time()

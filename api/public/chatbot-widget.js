@@ -9,7 +9,7 @@ class BmcChatbotWidget extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this.isOpen = false;
     this.apiUrl = this.getAttribute('api-url') || '/api/chat';
-    
+
     // Manage unique session ID per browser tab session
     if (!sessionStorage.getItem('chatbot_session_id')) {
       const uniqueId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -55,22 +55,24 @@ class BmcChatbotWidget extends HTMLElement {
   updateChatState() {
     const chatBody = this.shadowRoot.getElementById('chatBody');
     const chatToggle = this.shadowRoot.getElementById('chatHeader');
-    
+
     if (this.isOpen) {
       chatBody.classList.add('open');
       chatToggle.classList.add('open');
+      this.classList.add('widget-open');
     } else {
       chatBody.classList.remove('open');
       chatToggle.classList.remove('open');
+      this.classList.remove('widget-open');
     }
   }
 
   setupEventListeners() {
     const chatHeader = this.shadowRoot.getElementById('chatHeader');
     const chatForm = this.shadowRoot.getElementById('chatForm');
-    
+
     chatHeader.addEventListener('click', () => this.toggleChat());
-    
+
     chatForm.addEventListener('submit', (event) => {
       event.preventDefault();
       this.handleFormSubmit();
@@ -85,7 +87,7 @@ class BmcChatbotWidget extends HTMLElement {
     // Append User Message
     this.appendMessage(text, 'user');
     inputEl.value = '';
-    
+
     // Show Typing Indicator
     this.showTypingIndicator(true);
 
@@ -112,7 +114,7 @@ class BmcChatbotWidget extends HTMLElement {
       this.showTypingIndicator(false);
       const reply = data.response || data.message || data.text || JSON.stringify(data);
       this.appendMessage(reply, 'bot');
-      
+
     } catch (error) {
       console.error('Chatbot API error:', error);
       this.showTypingIndicator(false);
@@ -132,10 +134,10 @@ class BmcChatbotWidget extends HTMLElement {
     const chatMessages = this.shadowRoot.getElementById('chatMessages');
     const messageEl = document.createElement('div');
     messageEl.className = `message ${type}`;
-    
+
     // Format response (basic markdown: bullet points, bold, bold italic)
     messageEl.innerHTML = this.formatMessageText(text);
-    
+
     chatMessages.appendChild(messageEl);
     this.scrollToBottom();
   }
@@ -161,7 +163,7 @@ class BmcChatbotWidget extends HTMLElement {
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
-    
+
     // Format bold: **text** -> <strong>text</strong>
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 
@@ -170,15 +172,105 @@ class BmcChatbotWidget extends HTMLElement {
       /(https?:\/\/[^\s<]+)/g,
       '<a href="$1" target="_blank" rel="noopener noreferrer" style="color: #f5851f; text-decoration: underline;">$1</a>'
     );
-    
-    // Format bullet lists:
-    // Split lines
+
+    // Helper to render HTML table with smart cell wrapping
+    const buildTableHtml = (headers, rows) => {
+      let tableHtml = '<div class="table-container"><table class="chat-table">';
+      tableHtml += '<thead><tr>';
+      headers.forEach(h => {
+        const headerLower = h.toLowerCase().trim();
+        let cellClass = '';
+        if (headerLower === 'description' || h.length > 30) {
+          cellClass = ' class="wrap-text"';
+        }
+        tableHtml += `<th${cellClass}>${h}</th>`;
+      });
+      tableHtml += '</tr></thead><tbody>';
+
+      rows.forEach(row => {
+        tableHtml += '<tr>';
+        for (let c = 0; c < headers.length; c++) {
+          const cellValue = row[c] || '';
+          const headerLower = (headers[c] || '').toLowerCase().trim();
+          let cellClass = '';
+          if (headerLower === 'description' || cellValue.length > 50 || (cellValue.includes(' ') && cellValue.length > 25)) {
+            cellClass = ' class="wrap-text"';
+          }
+          tableHtml += `<td${cellClass}>${cellValue}</td>`;
+        }
+        tableHtml += '</tr>';
+      });
+      tableHtml += '</tbody></table></div>';
+      return tableHtml;
+    };
+
+    // Parse Markdown tables
     const lines = html.split('\n');
+    const processedLines = [];
+    let inTable = false;
+    let tableHeaders = [];
+    let tableRows = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      const isTableRow = line.startsWith('|') && line.endsWith('|') && line.length > 2;
+
+      if (isTableRow) {
+        const cells = line.split('|').map(c => c.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+
+        if (!inTable) {
+          const nextLine = (lines[i + 1] || '').trim();
+          const isSeparator = nextLine.startsWith('|') && nextLine.endsWith('|') && nextLine.replace(/[|:\-\s]/g, '') === '';
+
+          if (isSeparator) {
+            inTable = true;
+            tableHeaders = cells;
+            tableRows = [];
+            i++; // Skip separator line
+            continue;
+          }
+        } else {
+          tableRows.push(cells);
+          continue;
+        }
+      }
+
+      if (inTable && !isTableRow) {
+        processedLines.push(buildTableHtml(tableHeaders, tableRows));
+        inTable = false;
+      }
+
+      if (!inTable) {
+        processedLines.push(lines[i]);
+      }
+    }
+
+    if (inTable) {
+      processedLines.push(buildTableHtml(tableHeaders, tableRows));
+    }
+
     let inList = false;
-    const formattedLines = lines.map(line => {
+    const finalLines = processedLines.map(line => {
       const trimmed = line.trim();
-      // Match bullet like "•", "-", "*"
+
+      if (trimmed.startsWith('<div') || trimmed.startsWith('<table')) {
+        let suffix = '';
+        if (inList) {
+          inList = false;
+          suffix = '</ul>';
+        }
+        return suffix + line;
+      }
+
       if (trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.startsWith('*')) {
+        if (trimmed.startsWith('-') && trimmed.replace(/[\-\s]/g, '') === '') {
+          let suffix = '';
+          if (inList) {
+            inList = false;
+            suffix = '</ul>';
+          }
+          return suffix + '<hr class="chat-divider">';
+        }
         const itemContent = trimmed.substring(1).trim();
         let prefix = '';
         if (!inList) {
@@ -195,12 +287,12 @@ class BmcChatbotWidget extends HTMLElement {
         return suffix + (trimmed ? `<p>${line}</p>` : '<br>');
       }
     });
-    
+
     if (inList) {
-      formattedLines.push('</ul>');
+      finalLines.push('</ul>');
     }
-    
-    return formattedLines.join('');
+
+    return finalLines.join('');
   }
 
   render() {
@@ -211,11 +303,16 @@ class BmcChatbotWidget extends HTMLElement {
           position: fixed;
           right: 24px;
           bottom: 24px;
-          width: min(100vw - 48px, 380px);
+          width: min(100vw - 48px, 280px); /* Compact width when closed */
           z-index: 99999;
           font-family: 'IBM Plex Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           font-size: 0.95rem;
           color: #102a43;
+          transition: width 220ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        :host(.widget-open) {
+          width: min(100vw - 48px, 580px); /* Wide width when open to fit tables */
         }
 
         .chat-widget {
@@ -229,21 +326,21 @@ class BmcChatbotWidget extends HTMLElement {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          border: 1px solid rgba(255, 255, 255, 0.22);
+          border: 1px solid rgba(16, 42, 67, 0.15); /* Soft dark border */
           padding: 16px 20px;
           border-radius: 24px;
-          background: rgba(255, 255, 255, 0.08);
-          color: #ffffff;
+          background: rgba(255, 255, 255, 0.25); /* More opaque glass background */
+          color: #102a43; /* Dark blue text */
           cursor: pointer;
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
-          box-shadow: 0 24px 50px rgba(0, 0, 0, 0.18);
-          transition: background-color 200ms ease, box-shadow 200ms ease;
+          box-shadow: 0 24px 50px rgba(0, 0, 0, 0.12);
+          transition: background-color 200ms ease, box-shadow 200ms ease, color 200ms ease;
         }
 
         .chat-toggle:hover {
-          background: rgba(255, 255, 255, 0.14);
-          box-shadow: 0 30px 60px rgba(0, 0, 0, 0.24);
+          background: rgba(255, 255, 255, 0.45);
+          box-shadow: 0 30px 60px rgba(16, 42, 67, 0.18);
         }
 
         .chat-left {
@@ -286,8 +383,10 @@ class BmcChatbotWidget extends HTMLElement {
 
         .chat-toggle.open {
           background: rgba(255, 255, 255, 0.14);
+          color: #ffffff; /* White text when open to contrast with dark body */
           border-bottom-left-radius: 0;
           border-bottom-right-radius: 0;
+          border-color: rgba(255, 255, 255, 0.08);
         }
 
         .chat-toggle.open .chat-arrow {
@@ -312,7 +411,7 @@ class BmcChatbotWidget extends HTMLElement {
 
         .chat-body.open {
           transform: scaleY(1);
-          max-height: 520px;
+          max-height: 600px;
         }
 
         .chat-messages {
@@ -320,10 +419,64 @@ class BmcChatbotWidget extends HTMLElement {
           display: flex;
           flex-direction: column;
           gap: 14px;
-          height: 340px;
+          height: 420px;
           overflow-y: auto;
           scrollbar-width: thin;
           scrollbar-color: rgba(255,255,255,0.1) transparent;
+        }
+
+        /* Markdown Table Styles */
+        .table-container {
+          width: 100%;
+          overflow-x: auto;
+          margin: 10px 0;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .chat-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 0.85rem;
+          color: #f8fafc;
+          text-align: left;
+        }
+
+        .chat-table th {
+          background: rgba(255, 255, 255, 0.12);
+          padding: 8px 12px;
+          font-weight: 600;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+          white-space: nowrap;
+        }
+
+        .chat-table td {
+          padding: 8px 12px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          white-space: nowrap;
+        }
+
+        .chat-table th.wrap-text,
+        .chat-table td.wrap-text {
+          white-space: normal;
+          max-width: 280px;
+          overflow-wrap: break-word;
+          word-break: break-word;
+        }
+
+        .chat-table tr:last-child td {
+          border-bottom: none;
+        }
+
+        .chat-table tr:nth-child(even) {
+          background: rgba(255, 255, 255, 0.03);
+        }
+
+        .chat-divider {
+          border: 0;
+          height: 1px;
+          background: rgba(255, 255, 255, 0.1);
+          margin: 12px 0;
         }
 
         .chat-messages::-webkit-scrollbar {
@@ -448,7 +601,7 @@ class BmcChatbotWidget extends HTMLElement {
         }
 
         .chat-form input:focus {
-          border-color: #f5851f;
+          border-color: #ffc080;
           background: rgba(255, 255, 255, 0.09);
         }
 
@@ -460,7 +613,7 @@ class BmcChatbotWidget extends HTMLElement {
           border: none;
           padding: 0 18px;
           border-radius: 16px;
-          background: #f5851f;
+          background: #ffc080;
           color: #0c1c2c;
           font-weight: 700;
           cursor: pointer;
@@ -468,7 +621,7 @@ class BmcChatbotWidget extends HTMLElement {
         }
 
         .chat-form button:hover {
-          background: #e07210;
+          background: #ffd8b3;
           transform: scale(1.02);
         }
 
@@ -489,7 +642,7 @@ class BmcChatbotWidget extends HTMLElement {
         <div class="chat-body" id="chatBody">
           <div class="chat-messages" id="chatMessages">
             <div class="message bot">
-              <p>Hi there! Ask me any questions regarding the Control-M automation!</p>
+              <p>Hi there! I am your Control-M automation agent. Type <strong>hello</strong> or <strong>help</strong> to begin.</p>
             </div>
           </div>
           

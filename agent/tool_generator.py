@@ -77,7 +77,7 @@ def log_bmc_api_response(api_id: str, status_code: int) -> None:
 
 def load_registry(yaml_path: str = "api_registry.yaml") -> dict:
     """Load the API registry from YAML."""
-    with open(yaml_path, "r") as f:
+    with open(yaml_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 

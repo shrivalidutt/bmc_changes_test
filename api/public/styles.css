@@ -1,6 +1,6 @@
 :root {
-  --bg-start: #bf5300;
-  --bg-end: #ffd8b3;
+  --bg-start: #e28a47;
+  --bg-end: #ffeacc;
   --surface: rgba(255, 245, 230, 0.9);
   --surface-strong: rgba(255, 248, 236, 0.98);
   --text: #102a43;
@@ -28,16 +28,19 @@ body::before {
   position: fixed;
   inset: 0;
   background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.18), transparent 28%),
-              radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.12), transparent 20%);
+    radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.12), transparent 20%);
   pointer-events: none;
   animation: skyGlow 14s ease-in-out infinite;
 }
 
 @keyframes skyGlow {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.85;
     transform: scale(1);
   }
+
   50% {
     opacity: 1;
     transform: scale(1.02);
@@ -111,13 +114,14 @@ body::before {
 }
 
 #chatToggle {
-  background: #0056d4;
+  background: #3e6d98;
+  /* Pastel blue (lightened by one shade) */
   color: #ffffff;
-  border-color: rgba(0, 86, 212, 0.35);
+  border-color: rgba(62, 109, 152, 0.35);
 }
 
 #chatToggle:hover {
-  background: #0041a8;
+  background: #315d86;
 }
 
 .hero {
@@ -204,24 +208,24 @@ h1 {
 }
 
 .button-secondary {
-  background: rgba(255, 255,255, 0.12);
+  background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .button-secondary:hover {
-  background: rgba(255,255,255,0.22);
+  background: rgba(255, 255, 255, 0.22);
   box-shadow: 0 18px 44px rgba(255, 255, 255, 0.14);
 }
 
 .button-secondary {
-  background: rgba(255, 255,255, 0.12);
+  background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .button-secondary:hover {
-  background: rgba(255,255,255,0.18);
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .hero-visual {
@@ -252,12 +256,13 @@ h1 {
 }
 
 .hero-visual .card {
-  border-left: 4px solid var(--accent-strong);
+  border-left: 4px solid #8d4004;
 }
 
 .card {
   width: 100%;
-  background: #0f3d6f;
+  background: #3e6d98;
+  /* Pastel blue (lightened by one shade) */
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 32px;
   padding: 32px;
@@ -309,7 +314,7 @@ h1 {
   width: 30px;
   height: 30px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
   font-weight: 700;
   transition: transform 220ms ease, background 220ms ease;
@@ -318,7 +323,7 @@ h1 {
 .endpoint-card.open .expand-icon,
 .feature-card.open .expand-icon {
   transform: rotate(45deg);
-  background: rgba(255,255,255,0.16);
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .card-details {
@@ -347,15 +352,17 @@ h1 {
 
 .endpoint-card:hover p,
 .feature-card:hover p {
-  color: rgba(255,255,255,0.96);
+  color: rgba(255, 255, 255, 0.96);
 }
 
 .feature-card:hover {
-  background: #143f79;
+  background: #4b7da8;
+  /* Pastel blue hover (lightened by one shade) */
 }
 
 .endpoint-card:hover {
-  background: #143f79;
+  background: #4b7da8;
+  /* Pastel blue hover (lightened by one shade) */
 }
 
 .endpoint-grid {
@@ -366,7 +373,8 @@ h1 {
 }
 
 .endpoint-card {
-  background: #0f3d6f;
+  background: #3e6d98;
+  /* Pastel blue (lightened by one shade) */
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 24px;
   padding: 24px;
@@ -388,14 +396,14 @@ h1 {
 
 .endpoint-card p {
   margin: 0 0 16px;
-  color: rgba(255,255,255,0.92);
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .endpoint-card code {
   display: inline-block;
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.08);
   color: #e0f7ff;
   font-size: 0.95rem;
 }
@@ -414,7 +422,7 @@ h1 {
 .feature-group p {
   max-width: 720px;
   margin: 0;
-  color: rgba(255,255,255,0.83);
+  color: rgba(255, 255, 255, 0.83);
   line-height: 1.8;
 }
 
@@ -426,8 +434,9 @@ h1 {
 
 .feature-card {
   padding: 28px;
-  background: #0f3d6f;
-  border: 1px solid rgba(255,255,255,0.18);
+  background: #3e6d98;
+  /* Pastel blue (lightened by one shade) */
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 28px;
   box-shadow: 0 28px 60px rgba(0, 0, 0, 0.18);
   opacity: 0;
@@ -447,7 +456,7 @@ h1 {
 
 .feature-card p {
   margin: 0;
-  color: rgba(255,255,255,0.9);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 
