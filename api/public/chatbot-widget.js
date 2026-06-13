@@ -81,12 +81,17 @@ class BmcChatbotWidget extends HTMLElement {
 
   async handleFormSubmit() {
     const inputEl = this.shadowRoot.getElementById('chatInput');
+    const submitBtn = this.shadowRoot.querySelector('#chatForm button');
     const text = inputEl.value.trim();
     if (!text) return;
 
     // Append User Message
     this.appendMessage(text, 'user');
     inputEl.value = '';
+
+    // Disable input and button to prevent concurrent submissions
+    inputEl.disabled = true;
+    if (submitBtn) submitBtn.disabled = true;
 
     // Show Typing Indicator
     this.showTypingIndicator(true);
@@ -127,6 +132,11 @@ class BmcChatbotWidget extends HTMLElement {
         `Detail: ${detail}`,
         'bot error'
       );
+    } finally {
+      // Re-enable input and button
+      inputEl.disabled = false;
+      if (submitBtn) submitBtn.disabled = false;
+      inputEl.focus();
     }
   }
 
@@ -436,6 +446,7 @@ class BmcChatbotWidget extends HTMLElement {
 
         .chat-table {
           width: 100%;
+          min-width: max-content;
           border-collapse: collapse;
           font-size: 0.85rem;
           color: #f8fafc;
@@ -459,6 +470,7 @@ class BmcChatbotWidget extends HTMLElement {
         .chat-table th.wrap-text,
         .chat-table td.wrap-text {
           white-space: normal;
+          min-width: 180px;
           max-width: 280px;
           overflow-wrap: break-word;
           word-break: break-word;
@@ -620,13 +632,28 @@ class BmcChatbotWidget extends HTMLElement {
           transition: transform 150ms ease, background-color 150ms ease;
         }
 
-        .chat-form button:hover {
+        .chat-form button:hover:not(:disabled) {
           background: #ffd8b3;
           transform: scale(1.02);
         }
 
-        .chat-form button:active {
+        .chat-form button:active:not(:disabled) {
           transform: scale(0.98);
+        }
+
+        .chat-form button:disabled {
+          background: rgba(255, 255, 255, 0.08);
+          color: rgba(255, 255, 255, 0.3);
+          cursor: not-allowed;
+          transform: none;
+          pointer-events: none;
+        }
+
+        .chat-form input:disabled {
+          background: rgba(255, 255, 255, 0.02);
+          color: rgba(255, 255, 255, 0.3);
+          border-color: rgba(255, 255, 255, 0.05);
+          cursor: not-allowed;
         }
       </style>
 

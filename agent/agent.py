@@ -1262,6 +1262,208 @@ def _format_set_agent_parameter(raw_response):
     return "Agent parameter updated successfully."
 
 
+def _format_server_agentless_hosts(raw_response):
+    try:
+        payload = json.loads(raw_response)
+    except Exception:
+        return raw_response
+
+    if not isinstance(payload, dict):
+        return raw_response
+
+    if not payload.get("success"):
+        return raw_response
+
+    data = payload.get("data")
+    if not data:
+        return "No agentless hosts were found."
+
+    hosts = []
+    if isinstance(data, list):
+        hosts = data
+    elif isinstance(data, dict):
+        if "agentlessHosts" in data and isinstance(data["agentlessHosts"], list):
+            hosts = data["agentlessHosts"]
+        elif "data" in data and isinstance(data["data"], list):
+            hosts = data["data"]
+        else:
+            hosts = [data]
+
+    if not hosts or (len(hosts) == 1 and not hosts[0]):
+        return "No agentless hosts were found."
+
+    all_keys = set()
+    rows = []
+    for h in hosts:
+        if isinstance(h, dict):
+            flat = _flatten_response_dict(h)
+            rows.append(flat)
+            all_keys.update(flat.keys())
+        else:
+            rows.append({"Host": str(h)})
+            all_keys.add("Host")
+
+    if not rows:
+        return "No agentless hosts were found."
+
+    priority = ["name", "Name", "host", "Host", "status", "Status", "hostPlatform", "platform", "description", "Description"]
+    ordered_keys = [k for k in priority if k in all_keys]
+    ordered_keys += sorted(k for k in all_keys if k not in ordered_keys)
+
+    table_markdown = _format_text_table(ordered_keys, rows)
+    count = len(rows)
+    noun = "agentless host" if count == 1 else "agentless hosts"
+    return f"Found {count} {noun}:\n\n{table_markdown}"
+
+
+def _format_server_desired_state(raw_response):
+    try:
+        payload = json.loads(raw_response)
+    except Exception:
+        return raw_response
+
+    if not isinstance(payload, dict):
+        return raw_response
+
+    if not payload.get("success"):
+        return raw_response
+
+    data = payload.get("data")
+    
+    # Check if data contains a message or status
+    msg = None
+    if isinstance(data, dict):
+        msg = data.get("message") or data.get("description") or data.get("status")
+        
+    if msg:
+        return f"Desired state updated: {msg}"
+        
+    if isinstance(data, dict) and "name" in data and "desiredState" in data:
+        lines = [
+            f"Successfully set the desired state of Control-M Server '**{data['name']}**' to '**{data['desiredState']}**'."
+        ]
+        extra = {k: v for k, v in data.items() if k not in ("name", "desiredState")}
+        if extra:
+            lines.append("")
+            lines.append("**Server Status Details:**")
+            lines.append("")
+            lines.append(_format_dict_table(extra, key_label="Field", value_label="Value"))
+        return "\n".join(lines)
+        
+    return "Control-M Server desired state updated successfully."
+
+
+def _format_agent_communication_analysis(raw_response):
+    try:
+        payload = json.loads(raw_response)
+    except Exception:
+        return raw_response
+
+    if not isinstance(payload, dict):
+        return raw_response
+
+    if not payload.get("success"):
+        return raw_response
+
+    data = payload.get("data")
+    if not data:
+        return "No communication analysis data was returned."
+
+    if isinstance(data, dict):
+        lines = ["**Agent Communication Analysis Results**", ""]
+        
+        status = data.pop("status", None) or data.pop("Status", None)
+        message = data.pop("message", None) or data.pop("Message", None)
+        agent = data.pop("agent", None) or data.pop("Agent", None) or data.pop("agentName", None)
+        server = data.pop("server", None) or data.pop("Server", None) or data.pop("ctmServer", None)
+        
+        if agent:
+            lines.append(f"• **Agent**: {agent}")
+        if server:
+            lines.append(f"• **Server**: {server}")
+        if status:
+            lines.append(f"• **Status**: {status}")
+        if message:
+            lines.append(f"• **Message**: {message}")
+            
+        if len(lines) > 2:
+            lines.append("")
+
+        # Extract diagnostic tests if present
+        tests_data = data.pop("ctmagentCtmTestsType", None)
+        if not tests_data:
+            # Check for other keys containing "test"
+            for k in list(data.keys()):
+                if "test" in k.lower():
+                    tests_data = data.pop(k)
+                    break
+
+        if data:
+            lines.append("**Configuration and Diagnostic Details:**")
+            lines.append("")
+            flat_data = _flatten_response_dict(data)
+            table = _format_dict_table(flat_data, key_label="Parameter", value_label="Value")
+            lines.append(table)
+            lines.append("")
+
+        if tests_data:
+            lines.append("**Diagnostic Test Results:**")
+            lines.append("")
+            
+            # Format tests list
+            if isinstance(tests_data, str):
+                try:
+                    tests_data = json.loads(tests_data)
+                except Exception:
+                    pass
+                    
+            if isinstance(tests_data, list):
+                for test in tests_data:
+                    if isinstance(test, dict):
+                        title = test.get("title") or test.get("testName") or "Test"
+                        result = test.get("result") or test.get("status") or ""
+                        msg = test.get("message") or ""
+                        
+                        lines.append(f"• **{title}**: **{result}**")
+                        if msg:
+                            lines.append(f"  • **Message**: {msg}")
+                            
+                        # Find command and output
+                        cmd = None
+                        cmd_output = None
+                        user_action = test.get("userAction")
+                        
+                        for k, v in test.items():
+                            if k in ("title", "result", "status", "message", "userAction"):
+                                continue
+                            if k == "commandOutput" or "output" in k.lower():
+                                cmd_output = v
+                            elif isinstance(v, str) and any(x in v.lower() for x in ("ping", "nslookup", "bin/", "exe")):
+                                cmd = v
+                                
+                        if user_action and str(user_action).strip():
+                            lines.append(f"  *Action Required*: {user_action}")
+                        if cmd_output and title.lower().strip() not in ("connection", "ctmping"):
+                            # Clean escape characters
+                            clean_output = str(cmd_output).replace("\\n", "\n").replace("\\t", "\t").strip()
+                            lines.append("  • **Output**:")
+                            lines.append("  ---")
+                            for out_line in clean_output.splitlines():
+                                lines.append(f"  {out_line}")
+                            lines.append("  ---")
+                    else:
+                        lines.append(f"• {test}")
+            else:
+                lines.append(str(tests_data))
+            
+        return "\n".join(lines)
+        
+    elif isinstance(data, list):
+        return _format_generic_data(data)
+        
+    return str(data)
+
+
 def format_confirmation(api, converted):
     """
     Show every parameter the server will receive: values the user gave,
@@ -1348,7 +1550,19 @@ def check_and_format_error(api, raw_response):
                     # Try to extract the error description from payload
                     data = payload.get("data")
                     if isinstance(data, dict):
-                        err_detail = data.get("raw") or data.get("message") or data.get("error") or data.get("description")
+                        errors = data.get("errors")
+                        if isinstance(errors, list) and errors:
+                            first_err = errors[0]
+                            if isinstance(first_err, dict):
+                                err_detail = first_err.get("message") or first_err.get("error")
+                        if not err_detail:
+                            err_detail = data.get("raw") or data.get("message") or data.get("error") or data.get("description")
+                    if not err_detail:
+                        errors = payload.get("errors")
+                        if isinstance(errors, list) and errors:
+                            first_err = errors[0]
+                            if isinstance(first_err, dict):
+                                err_detail = first_err.get("message") or first_err.get("error")
                     if not err_detail:
                         err_detail = payload.get("message") or payload.get("error") or payload.get("description")
                     if not err_detail:
@@ -1410,7 +1624,11 @@ def check_and_format_error(api, raw_response):
     if "connect" in err_detail.lower() or "timeout" in err_detail.lower() or "reach" in err_detail.lower():
         return f"I was unable to connect to the server. Please check your network or VPN settings (Error Code: {code_val})."
         
-    return f"I ran into an issue while requesting the {api['name']} API (Error Code: {code_val}). Details: {err_detail}."
+    if err_detail:
+        if not err_detail.endswith('.'):
+            err_detail += '.'
+        return err_detail
+    return f"I ran into an issue while requesting the {api['name']} API (Error Code: {code_val})."
 
 
 def phase4_explain(api, raw_response, original_query):
@@ -1425,6 +1643,12 @@ def phase4_explain(api, raw_response, original_query):
         return _format_agent_parameters(raw_response)
     if api_id == "set_agent_parameter":
         return _format_set_agent_parameter(raw_response)
+    if api_id == "get_server_agentless_hosts":
+        return _format_server_agentless_hosts(raw_response)
+    if api_id == "set_server_desired_state":
+        return _format_server_desired_state(raw_response)
+    if api_id == "analyze_agent_communication":
+        return _format_agent_communication_analysis(raw_response)
 
     prompt = f"""You are a helpful Automation API Assistant.
 Explain the following API response in clear, friendly natural language.
@@ -1521,6 +1745,12 @@ def execute_and_explain(api, converted_params, tool_map, original_query):
         return _format_agent_parameters(result)
     if api_id == "set_agent_parameter":
         return _format_set_agent_parameter(result)
+    if api_id == "get_server_agentless_hosts":
+        return _format_server_agentless_hosts(result)
+    if api_id == "set_server_desired_state":
+        return _format_server_desired_state(result)
+    if api_id == "analyze_agent_communication":
+        return _format_agent_communication_analysis(result)
     return phase4_explain(api, result, original_query)
 
 

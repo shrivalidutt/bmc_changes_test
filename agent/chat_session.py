@@ -169,6 +169,12 @@ class AutomationChatSession:
             self._apply_step_result(step, handle_result)
             return handle_result
 
+        if self.state == "PIPELINE":
+            self._say("I am still processing your previous request. Please wait a moment.")
+            handle_result.messages = list(self._replies)
+            handle_result.pipeline_complete = False
+            return handle_result
+
         return handle_result
 
     def _resume_from_collect(self, user_input: str) -> None:
