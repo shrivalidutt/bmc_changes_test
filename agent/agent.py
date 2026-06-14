@@ -15,7 +15,18 @@ TODAY = datetime.now().strftime("%Y-%m-%d")
 # ── LOAD REGISTRY ─────────────────────────────────────────────
 def load_registry():
     with open(REGISTRY_PATH) as f:
-        return yaml.safe_load(f)
+        registry = yaml.safe_load(f)
+    
+    # Automatically apply global defaults to all APIs
+    global_defaults = registry.get("global_defaults", {})
+    if global_defaults:
+        for api in registry.get("apis", []):
+            for param in api.get("parameters", []):
+                if param["name"] in global_defaults:
+                    param["required"] = False
+                    param["default"] = global_defaults[param["name"]]
+                    
+    return registry
 
 # ── LLM (see llm_provider.py) ─────────────────────────────────
 llm_intent = create_llm(max_new_tokens=128)

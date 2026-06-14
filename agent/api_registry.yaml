@@ -5,6 +5,12 @@
 
 base_url: "https://nlp-dbactm-sp17:8443"
 
+# ── Global Parameter Defaults ──────────────────────────────
+# Any API with a parameter matching a key here will automatically
+# have that parameter made optional with this default value.
+global_defaults:
+  server: "nlp-dbactm-sp17"
+
 # The target host uses a self-signed / internal cert, so TLS verification
 # is disabled for this deployment. Flip to true once a proper cert is in place.
 verify_ssl: false
@@ -70,7 +76,7 @@ apis:
       and values. Optional `extendedData` requests additional hidden/extended
       fields when supported by the server.
     method: GET
-    endpoint: /config/server/{server}/agent/{agent}/params
+    endpoint: /automation-api/config/server/{server}/agent/{agent}/params
     requires_auth: true
     parameters:
       - name: server
@@ -99,7 +105,7 @@ apis:
       must be JSON with a `value` field. Use when the user wants to change or
       configure a specific agent parameter.
     method: POST
-    endpoint: /config/server/{server}/agent/{agent}/param/{name}
+    endpoint: /automation-api/config/server/{server}/agent/{agent}/param/{name}
     requires_auth: true
     parameters:
       - name: server
