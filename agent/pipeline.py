@@ -123,6 +123,20 @@ def run_pipeline_step(
     deps: PipelineDeps,
 ) -> StepResult:
     """Run exactly one pipeline step and return structured output for the next."""
+    
+    # Print human-readable progress so the user knows what's happening
+    step_messages = {
+        PipelineStep.TOP_INTENT: " Analyzing your request to figure out what you want to do...",
+        PipelineStep.SELECT_API: " Finding the exact Control-M API for the job...",
+        PipelineStep.EXTRACT_REQUIRED: " Reading your text to extract required parameters...",
+        PipelineStep.EXTRACT_OPTIONAL: " Looking for any optional parameters...",
+        PipelineStep.CONVERT_PARAMS: " Formatting the extracted parameters...",
+        PipelineStep.EXECUTE: " Executing the API call to the server...",
+        PipelineStep.EXPLAIN: " Summarizing the results...",
+    }
+    if step in step_messages:
+        print(f"\n▶ {step_messages[step]}", flush=True)
+
     if step == PipelineStep.TOP_INTENT:
         return _step_top_intent(ctx, deps)
     if step == PipelineStep.SELECT_API:
