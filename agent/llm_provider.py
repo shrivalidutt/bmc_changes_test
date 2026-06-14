@@ -158,5 +158,5 @@ class TinyLlamaLLM:
         )
 
 
-def create_llm(max_new_tokens: int = 256) -> TinyLlamaLLM:
+def create_llm(max_new_tokens: int = 128) -> TinyLlamaLLM:
     return TinyLlamaLLM(max_new_tokens=max_new_tokens, temperature=0.0)

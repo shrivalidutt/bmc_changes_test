@@ -29,9 +29,9 @@ def load_registry():
     return registry
 
 # ── LLM (see llm_provider.py) ─────────────────────────────────
-llm_intent = create_llm(max_new_tokens=128)
-llm = create_llm(max_new_tokens=192)
-llm_convert = create_llm(max_new_tokens=384)
+llm_intent = create_llm(max_new_tokens=32)
+llm = create_llm(max_new_tokens=64)
+llm_convert = create_llm(max_new_tokens=128)
 
 # Linear API flow (no confirmation steps):
 #   IDLE → top intent → API selection → extract params from same query → call API
