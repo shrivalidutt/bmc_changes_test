@@ -459,6 +459,20 @@ def phase2_extract_params(
     apply_confidence_filters: True on the first pass; False after the user was
     asked for missing params (accept their answer as-is).
     """
+    # --- REGEX FAST PATH ---
+    if apply_confidence_filters and phase != "confirm_edit":
+        try:
+            from ctm_regex_extractor import try_regex_extraction
+            regex_params = try_regex_extraction(api["id"], user_input)
+            if regex_params:
+                if allowed_names is not None:
+                    regex_params = {k: v for k, v in regex_params.items() if k in allowed_names}
+                if regex_params:
+                    return _validate_and_filter_enums(api, regex_params)
+        except ImportError:
+            pass
+    # --- END REGEX FAST PATH ---
+
     params = api.get("parameters", [])
     if allowed_names is not None:
         if not allowed_names:
